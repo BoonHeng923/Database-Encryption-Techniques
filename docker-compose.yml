@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: encbench_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: encbench
+      POSTGRES_USER: encbench_user
+      POSTGRES_PASSWORD: encbench_pass
+    ports:
+      # Host 5433 -> container 5432: this machine already runs a native PostgreSQL
+      # service on 5432, so the container uses a different host port to avoid clashing.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U encbench_user -d encbench"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    container_name: encbench_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root_pass
+    ports:
+      # Host 27018 -> container 27017: this machine already runs a native MongoDB
+      # service on 27017, so the container uses a different host port to avoid clashing.
+      - "27018:27017"
+    volumes:
+      - mongodata:/data/db
+      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: encbench_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: encbench
+      POSTGRES_USER: encbench_user
+      POSTGRES_PASSWORD: encbench_pass
+      MONGO_URI: mongodb://encbench_user:encbench_pass@mongo:27017/encbench?authSource=encbench
+      ENC_MASTER_KEY_B64: ${ENC_MASTER_KEY_B64}
+      PAD_BUCKET_SIZE: ${PAD_BUCKET_SIZE:-50}
+    volumes:
+      - ./data:/app/data
+      - ./results:/app/results
+    command: ["python", "-m", "src.experiments.run_experiment"]
+
+volumes:
+  pgdata:
+  mongodata:
