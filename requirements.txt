@@ -1,5 +1,8 @@
-psycopg2-binary==2.9.12
 pymongo==4.10.1
+couchbase==4.3.3
+cassandra-driver==3.29.2
+python-arango==8.1.6
+gevent==26.8.0
 cryptography==43.0.3
 numpy==2.2.6
 pandas==2.2.3
@@ -7,3 +10,4 @@ matplotlib==3.10.3
 psutil==6.1.0
 scipy==1.14.1
 python-dotenv==1.0.1
+pytest==8.3.3

@@ -1,8 +1,8 @@
 # SEG2102 — Introduction & Implementation Plan
 
-**Working title:** *Beyond Confidentiality: Quantifying Access-Pattern and Volume Leakage in Encrypted SQL and NoSQL Databases under a Common Benchmark*
+**Working title:** *Beyond Confidentiality: Reducing and Measuring Access-Pattern, Volume, and Cross-Collection Metadata Leakage in Encrypted NoSQL Databases*
 
-> **How to use this file.** Part A is the draft **Introduction (Section 2, worth 3 marks)** written to the marking rubric — paste it into your IEEE Word report and adjust citation numbers to match your group's shared reference list. Part B is a **detailed implementation plan** that turns your chosen domain gap (#1, leakage) plus the methodological "common-benchmark" gap into one **engine-agnostic pipeline you can build, run, and measure across six database engines (three SQL: PostgreSQL, MySQL, MariaDB; three NoSQL: MongoDB, Couchbase, Cassandra)** — satisfying the mandatory NoSQL requirement while proving the pipeline generalises across engines and both database families, so it feeds the Methodology (6 marks) and Results (10 marks) sections.
+> **How to use this file.** Part A is the draft **Introduction (Section 2, worth 3 marks)** written to the marking rubric — paste it into your IEEE Word report and adjust citation numbers to match your group's shared reference list. Part B is a **detailed implementation plan** that turns your chosen domain gap (#1, leakage) plus the methodological "common-benchmark" gap into one **engine-agnostic pipeline you can build, run, and measure across three NoSQL database engines (MongoDB, Couchbase, Cassandra)** — satisfying the mandatory NoSQL requirement, measuring both the *before/after* impact of the leakage-reduction solution and its behaviour on a realistic *multi-collection* schema, so it feeds the Methodology (6 marks) and Results (10 marks) sections.
 >
 > **Citation placeholders:** references are written as `[X1]`, `[X2]`… where they are *new* sources the Introduction needs, and as `[LR-n]` where they should reuse a paper already in your literature review (e.g., Cao 2023, Gui 2023). Renumber everything into one IEEE sequence at the end.
 
@@ -16,7 +16,7 @@ The rubric breaks the 3 marks into three graded elements, each needing supportin
 
 #### General Background
 
-Database Management Systems (DBMS) are the backbone of modern information infrastructure, responsible not only for storing and retrieving large volumes of data but also for enforcing data integrity, scalability, and access control [X1]. As organisations migrate sensitive workloads to cloud and outsourced environments, encryption has become the primary safeguard for confidentiality, ensuring that data remains unintelligible to any party without the decryption key even if the underlying storage is breached [LR-Mohamed]. This need spans both relational (SQL) systems and NoSQL databases such as MongoDB, the latter's document model and horizontal scalability having made it a default choice for large-scale, cloud-hosted applications that routinely handle personal and regulated data [X2]. To protect such data while still allowing it to be queried, a family of techniques known collectively as *encrypted search* — including searchable symmetric encryption (SSE), order-preserving/order-revealing encryption (OPE/ORE), and deterministic encryption — has been developed so that a server can execute queries directly over ciphertext without ever holding the plaintext, in both relational and document stores [LR-Ocenas], [X3].
+Database Management Systems (DBMS) are the backbone of modern information infrastructure, responsible not only for storing and retrieving large volumes of data but also for enforcing data integrity, scalability, and access control [X1]. As organisations migrate sensitive workloads to cloud and outsourced environments, encryption has become the primary safeguard for confidentiality, ensuring that data remains unintelligible to any party without the decryption key even if the underlying storage is breached [LR-Mohamed]. This need is acute for NoSQL databases such as MongoDB, Couchbase, and Cassandra, whose document and wide-column models and horizontal scalability have made them a default choice for large-scale, cloud-hosted applications that routinely handle personal and regulated data [X2]. To protect such data while still allowing it to be queried, a family of techniques known collectively as *encrypted search* — including searchable symmetric encryption (SSE), order-preserving/order-revealing encryption (OPE/ORE), and deterministic encryption — has been developed so that a server can execute queries directly over ciphertext without ever holding the plaintext [LR-Ocenas], [X3].
 
 #### Problem Statement
 
@@ -28,18 +28,20 @@ This problem matters because the gap between *perceived* and *actual* security i
 
 #### Objective
 
-The objective of this report is to **design, implement, and evaluate a single controlled benchmark that quantifies the confidentiality–performance trade-off of encrypted-search techniques, and to show that it holds across multiple SQL and NoSQL database engines.** Concretely, the study will:
+> **Engine scope (updated, see `SEG2102_MongoDB_Only_Plan.md` Revision 3):** multi-engine collection (MongoDB + Couchbase + Cassandra) proved too slow to complete reliably within the project timeline — Couchbase's missing secondary index alone cost significant time before being diagnosed. The study below was therefore run to completion **in MongoDB only**, which has complete, clean data across all three scale points (1k/10k/30k) and the full decoy-ratio sweep. Couchbase/Cassandra (and an experimental ArangoDB adapter) remain in the codebase as an **optional generalisation appendix**, evaluated only as a lightweight single-point check where time permits, not as a required part of the core result. The pipeline's engine-agnostic client/adapter split means this is a scoping decision, not a redesign — extending to another engine is implementation cost, not new architecture.
 
-1. Implement a representative set of query-able encryption approaches — a baseline plaintext store, a deterministic/property-preserving scheme, and a leakage-reduced approach — as **one engine-agnostic pipeline** applied to the same dataset and workload across **six database engines (SQL: PostgreSQL, MySQL, MariaDB; NoSQL: MongoDB, Couchbase, Cassandra)**.
-2. **Measure leakage quantitatively** by running a documented access-pattern / volume inference attack against each approach and reporting the adversary's query-recovery accuracy as a security metric.
-3. **Measure the performance cost** of each approach under an identical workload using query latency, throughput, CPU utilisation, and storage/ciphertext expansion.
-4. Produce a side-by-side comparison, under one common dataset, workload, and threat model, that makes the security-versus-performance trade-off explicit and reproducible, and **confirm that the leakage behaviour is consistent across all six SQL and NoSQL engines** while noting where performance overhead is engine-dependent.
+The objective of this report is to **design, implement, and evaluate a leakage-reduction solution for encrypted NoSQL databases, quantify its confidentiality–performance trade-off, and show that it works both for a single collection and for a realistic multi-collection schema in MongoDB, with generalisation to Couchbase and Cassandra explored as a secondary check where time permits.** Concretely, the study will:
 
-These objectives are measurable and testable: each yields numeric metrics (recovery accuracy in %, latency in ms, throughput in ops/s, overhead in %) that can be compared against each engine's plaintext baseline and cross-checked against published benchmarks, supporting the conclusions drawn in Section 5.
+1. Implement three query-able storage approaches — a baseline plaintext store (A), a deterministic/property-preserving scheme that still leaks (B), and the leakage-reduced solution (C) — as **one engine-agnostic pipeline** applied to the same dataset and workload across **three NoSQL engines (MongoDB, Couchbase, Cassandra)**.
+2. **Measure leakage quantitatively** by running a documented access-pattern / volume / frequency inference attack against each approach, reporting the adversary's query-recovery accuracy, and measuring the **impact of the solution as a before (B) vs after (C) comparison** on every metric.
+3. **Measure the performance cost** of the solution under an identical workload using query latency, throughput, CPU utilisation, and storage/ciphertext expansion, reported as the before/after change from B to C.
+4. **Extend the evaluation from a single collection to a realistic three-collection schema** (`patients`, `lab_orders`, `billing`) and show that the solution reduces both per-collection value leakage and **cross-collection linkage leakage**, demonstrating that it is flexible enough for real multi-table deployments while remaining consistent across all three NoSQL engines.
+
+These objectives are measurable and testable: each yields numeric metrics (recovery accuracy in %, linkage-recovery accuracy in %, latency in ms, throughput in ops/s, overhead in %) that can be compared against each engine's plaintext baseline and as a before/after (B vs C) change, supporting the conclusions drawn in Section 5.
 
 #### Scope of the Report
 
-This report focuses on **single-server, outsourced encrypted search** and the leakage that arises from querying encrypted data. To show that the problem and its mitigation are general rather than engine-specific, the study implements one common pipeline and evaluates it on **six database engines — three SQL (PostgreSQL, MySQL, MariaDB) and three NoSQL (MongoDB, Couchbase, Cassandra)**. It covers deterministic/property-preserving encryption and a leakage-reduced construction, evaluates them against a defined honest-but-curious adversary using a known inference attack, and reports both security (recovery accuracy) and performance metrics. It does **not** cover fully homomorphic encryption or trusted-execution-environment approaches (reviewed separately in the literature review as alternative computation-over-encrypted-data paradigms), network-level metadata leakage, secure multi-party computation, or multi-user key distribution, each of which is a distinct problem beyond the confidentiality-of-querying focus adopted here.
+This report focuses on **single-server, outsourced encrypted search in NoSQL databases** and the leakage that arises from querying encrypted data. The study implements one common pipeline and evaluates it fully on **MongoDB**, the sole engine with complete, reproducible data across all scale points and the full decoy-ratio sweep, for both a single collection and a realistic three-collection schema. The pipeline's client/adapter split makes it engine-agnostic by design, and this was partially validated during development against Couchbase and Cassandra (and an experimental ArangoDB adapter) before those were descoped for time — cite whatever single-point Couchbase/Cassandra data is included in the optional appendix, if run. It covers deterministic/property-preserving encryption (B) and the leakage-reduced solution (C: salted/re-randomised encryption, bucket padding, per-collection keys, and name tokenisation), evaluates them against a defined honest-but-curious adversary using a known inference attack, and reports security (value-recovery and cross-collection linkage-recovery accuracy) and performance metrics, including the before/after impact of the solution. It **substantially reduces but does not claim to fully eliminate** leakage: fully hiding the raw access pattern requires ORAM-class techniques whose cost is impractical, and **network-level metadata (traffic timing, packet sizes) is below the database layer and is left as future work**. Fully homomorphic and trusted-execution-environment approaches, secure multi-party computation, and multi-user key distribution are also out of scope (the first two are reviewed in the literature review as alternative paradigms).
 
 #### Use of High-Quality Sources
 
@@ -61,230 +63,213 @@ Add these to your reference list (renumber into the shared IEEE sequence). Brack
 
 ## Part B — Detailed Implementation Plan
 
-This plan operationalises **domain gap #1 (encrypted-query functionality leaks information and is not equivalent to confidentiality)** together with the **methodological gap (no common-workload, common-threat-model comparison)**. It is designed as a **single, engine-agnostic pipeline that runs across several SQL and NoSQL database engines**, satisfying the assignment's mandatory NoSQL requirement while also proving — in the Results section — that the same pipeline and findings hold regardless of engine. It is scoped so a three-person team can build and measure it, and it produces the quantitative results the 10-mark Results section needs.
+This plan operationalises **domain gap #1 (encrypted-query functionality leaks information and is not equivalent to confidentiality)**. The creative contribution is a **leakage-reduction solution that uses generatively-produced decoy records to flatten the frequency/volume signal that leakage-abuse attacks exploit, combined with a secret client-only function that decides which records are real** so that the untrusted server (and any attacker) cannot separate real data from decoys. The solution is built and measured as one engine-agnostic pipeline across **three NoSQL engines — MongoDB, Couchbase, and Cassandra** — for both a single collection and a realistic three-collection schema, and every result is reported as a **before vs. after** comparison so readers can see exactly what the solution changes.
 
-**Engines under test.** The benchmark is run on **six database engines — three SQL and three NoSQL**:
-
-| Family | Engines | Why included |
-|---|---|---|
-| **SQL (relational)** | **PostgreSQL** (primary), **MySQL**, **MariaDB** | PostgreSQL pairs with Pina [7] in the literature review; MySQL and MariaDB are the two engines your own literature review discusses (Carvalho, Natarajan), and MariaDB is a near-twin fork of MySQL, giving a natural control. All three share the SQL client protocol, so only the driver changes. |
-| **NoSQL** | **MongoDB** (primary, mandatory), **Couchbase**, **Cassandra** | MongoDB is the required document store; Couchbase is a second document store with a SQL-like query language (N1QL/SQL++); Cassandra is a wide-column store, a genuinely different data model that strengthens the "works across NoSQL families" claim. |
-
-Adding engines is cheap because of the architecture below: everything except a thin **storage adapter** is shared. Redis and other pure key-value stores are deliberately **excluded** and noted as a limitation, because Approach B requires an equality query over an encrypted *field*, which key-value stores do not support cleanly.
-
-**Why the pipeline is engine-agnostic.** The quantity being measured — access-pattern, volume, and frequency leakage from *querying encrypted data* — is a property of the **encryption-and-query strategy, not the storage engine**. Every stage except one is shared across engines: the client-side encryption layer, the query encoder, the seeded workload driver, the adversary/attack module, and all metrics are identical. Only a thin **storage adapter** differs — for example `find({field: token})` on MongoDB versus `SELECT ... WHERE field = token` on the SQL engines versus the equivalent N1QL/CQL lookup on Couchbase/Cassandra — so "works across engines" is achieved by adding one small adapter per engine behind a single interface. Property-preserving encryption maps cleanly to every one of these models: a deterministic-encrypted document field or SQL column both support equality queries, and an order-preserving encoding supports range queries. This mirrors classic encrypted-relational-database systems (e.g., CryptDB) and the leakage-abuse literature, which was originally defined on SQL databases — so running the attack on *six* engines across two families is a strong demonstration that the leakage is intrinsic to the strategy, not an artefact of one engine.
+**Honest positioning.** This project does not invent a new cryptographic primitive, and it does not claim to *eliminate* leakage. Hiding the raw physical access pattern completely requires ORAM-class techniques whose cost is provably at least logarithmic and impractical for a real database, and network-level metadata (traffic timing, packet sizes) sits below the database layer. The contribution is therefore framed as: **a novel application of generative decoy insertion to access-pattern/volume leakage, evaluated under a common benchmark across NoSQL engines and across single- and multi-collection schemas — a setting prior work has not measured.** How this relates to existing work is set out in B.13.
 
 ### B.1 Core idea in one sentence
 
-> Build the *same* dataset three ways — (A) plaintext baseline, (B) property-preserving/deterministic encryption that supports querying but leaks, and (C) a leakage-reduced scheme — **on six engines (SQL: PostgreSQL, MySQL, MariaDB; NoSQL: MongoDB, Couchbase, Cassandra)**, then run **one identical query workload** and **one identical inference attack** across all of them, reporting security (attacker recovery accuracy) and performance (latency/throughput/CPU/storage) on a common scale.
+> Store the same data four ways — (A) plaintext, (B) deterministic encryption that still leaks, (C) deterministic encryption plus *naive* decoy padding, and (D) our solution: deterministic encryption plus *generatively-produced* decoys whose real/decoy status is decided by a secret client-only function — then run one identical inference attack (single-collection value recovery and cross-collection linkage recovery) across MongoDB, Couchbase, and Cassandra, and report security and performance as a before/after comparison.
 
-This directly demonstrates the thesis of your literature review: encrypted ≠ confidential, and the leakage/performance trade-off is only visible under a controlled comparison — and that the result holds across engines and across both database families.
+The reason C and D both exist is that they isolate the value of the creative part: **C shows that naive decoys can be filtered out by an attacker who checks whether records look realistic, whereas D's generative decoys survive that filter.** The gap between C and D is the headline contribution.
 
 ### B.2 Research design
 
-- **Type:** Quantitative, experimental **comparative study** (matches Methodology rubric 4.2).
-- **Independent variables:** (1) encryption/search approach (A plaintext, B deterministic/OPE-style, C leakage-reduced); (2) **storage engine (6 levels: PostgreSQL, MySQL, MariaDB, MongoDB, Couchbase, Cassandra)**; (3) data scale.
-- **Dependent variables:** (security) attacker query-recovery accuracy; (performance) mean query latency, throughput, CPU %, index+data storage size, ciphertext expansion.
-- **Controlled/held constant:** dataset, seeded query workload, hardware/VM, engine versions, warm-up procedure, number of repetitions — held identical so approach, engine, and scale are the only things that vary.
-- **Threat model:** honest-but-curious server/observer who sees the encrypted store, the encrypted queries, and the returned encrypted record sets (access pattern + volume), plus a realistic amount of auxiliary knowledge about the data distribution. This is the standard leakage-abuse setting and is identical for every engine.
-- **Phasing (to keep the workload realistic).** The full grid is 3 approaches × 6 engines × 3 scale points × N repeats. To protect the timeline, run it in two phases: **Phase 1 (core, mandatory):** the two primary engines, **MongoDB** and **PostgreSQL**, across all approaches, scales, and repeats — this alone satisfies the assignment. **Phase 2 (extension):** the four additional engines (MySQL, MariaDB, Couchbase, Cassandra). If time is tight, Phase 2 may be run at the largest scale point only, or with fewer repeats, and this is stated openly as a scoping decision rather than a gap.
+- **Type:** Quantitative, experimental comparative study.
+- **Independent variables:** (1) approach (A / B / C / D); (2) NoSQL engine (MongoDB primary and fully evaluated; Couchbase/Cassandra optional appendix, see Scope); (3) schema (single collection vs. three linked collections); (4) data scale (sub-sampled points, see B.5); (5) **`decoy_ratio` ∈ {0.5, 0.75, 1.0}** — how far each value's observed count is padded toward the most frequent value's count, for approaches C/D. Added as a formal independent variable rather than a fixed constant because the sweep produced the report's strongest finding: recovery does not fall gradually with the ratio, it stays roughly flat at 0.5–0.75 and collapses only at full flattening (1.0) — a cliff, not a slope.
+- **Dependent variables — security:** value-recovery accuracy (%), and cross-collection linkage-recovery accuracy (%). **Performance:** mean/p95 query latency (ms), throughput (q/s), CPU (%), storage (MB) and expansion factor.
+- **Held constant:** dataset, seeded workload, hardware, engine versions, warm-up, repeats — so only the variables above move.
+- **Threat model:** an honest-but-curious server/observer who sees the encrypted collections, the encrypted queries, and which encrypted records each query returns (access pattern + volume + search pattern), plus realistic auxiliary knowledge of the value distribution. For approaches C and D the attacker is additionally allowed a **realism filter** — the ability to discard records that look statistically implausible — which is what separates naive decoys (C) from generative decoys (D).
+- **Phasing:** MongoDB is the mandatory primary engine and is run fully (all approaches, schemas, scales, repeats). Couchbase and Cassandra are the extension; if time is short they may be run at the largest scale only, stated openly as a scoping choice.
 
 ### B.3 System architecture
 
-The trusted-client stages and the adversary are **shared and engine-independent**; only the boxed **storage adapter** is added once per engine.
+The trusted client holds all keys and secret functions; the untrusted server only stores and returns data. Only the boxed storage adapter changes per engine.
 
 ```
-   ┌──────────────────────────────────────────────────────────────────┐
-   │                        Client (trusted)  — SHARED                  │
-   │  ┌──────────────┐  ┌───────────────┐  ┌────────────────────────┐  │
-plaintext│ Encryption/   │─▶│ Query encoder │─▶│ Seeded workload driver │  │
-dataset─▶│ bucketiser    │  │ (enc. query)  │  │ (replays same queries) │  │
-   │  └──────────────┘  └───────────────┘  └───────────┬────────────┘  │
-   └──────────────────────────────────────────────────┼───────────────┘
-                                                       │ encrypted query + token
-        ┌────────────┬────────────┬───────────────────┼──────────┬────────────┐
-        ▼            ▼            ▼                     ▼          ▼            ▼
-   ┌─────────┐ ┌─────────┐ ┌─────────┐          ┌─────────┐ ┌─────────┐ ┌─────────┐
-   │ Adapter │ │ Adapter │ │ Adapter │          │ Adapter │ │ Adapter │ │ Adapter │
-   │Postgres │ │ MySQL   │ │ MariaDB │          │ MongoDB │ │Couchbase│ │Cassandra│
-   │ (SQL)   │ │ (SQL)   │ │ (SQL)   │          │ (doc)   │ │ (doc)   │ │(wide-col)│
-   └────┬────┘ └────┬────┘ └────┬────┘          └────┬────┘ └────┬────┘ └────┬────┘
-        └───────────┴───────────┴──────────┬─────────┴───────────┴──────────┘
-                                           │ observed: access pattern, volume, search pattern
-                                           ▼
-   ┌──────────────────────────────────────────────────────────────────┐
-   │         Adversary module (leakage-abuse attack)  — SHARED          │
-   │   input: observed leakage + aux. distribution                      │
-   │   output: recovered query values, recovery accuracy %              │
-   └──────────────────────────────────────────────────────────────────┘
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │                         CLIENT (trusted)                                 │
+   │  ┌────────────┐ ┌──────────────┐ ┌───────────────┐ ┌─────────────────┐  │
+plaintext│ Value       │ │ GAN decoy    │ │ Secret ID     │ │ Query encoder + │ │
+records─▶│ encryptor   │ │ generator    │ │ function f_k  │ │ workload driver │ │
+   │  │ (per-coll.) │ │ (realistic   │ │ (real vs      │ │                 │  │
+   │  │             │ │  fake rows)  │ │  decoy)       │ │                 │  │
+   │  └────────────┘ └──────────────┘ └───────────────┘ └────────┬────────┘  │
+   └───────────────────────────────────────────────────────────┼───────────┘
+                    real + decoy records (indistinguishable)     │ enc. query
+                    ┌─────────────────┬──────────────────────────┼───────────┐
+                    ▼                 ▼                           ▼           │
+             ┌────────────┐    ┌────────────┐             ┌────────────┐      │
+             │ Adapter:   │    │ Adapter:   │             │ Adapter:   │      │
+             │ MongoDB    │    │ Couchbase  │             │ Cassandra  │      │
+             └─────┬──────┘    └─────┬──────┘             └─────┬──────┘      │
+                   └─────────────────┴────────┬─────────────────┘             │
+                        returns reals+decoys  │ (observed by attacker)        │
+                                              ▼                               │
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │  On the client: recompute f_k(id) → keep REAL records, drop decoys,      │
+   │  decrypt values, return clean result to the user.                        │
+   └────────────────────────────────────────────────────────────────────────┘
+
+   Attacker sees only the server side: encrypted records (reals+decoys mixed),
+   encrypted queries, and result sets. It cannot compute f_k (no key).
 ```
 
-Each `Adapter` is one small implementation of a single interface (`store()`, `query()`); everything above and below the adapter row is written once and reused for all six engines. *(Reuse this diagram in Methodology 4.5 "Flow Diagram or Architecture".)*
+### B.4 The four approaches
 
-### B.4 The three approaches to implement
+| Approach | What is stored | Purpose | Expected leakage |
+|---|---|---|---|
+| **A — Plaintext** | Sensitive field in the clear | Baseline / attack sanity check (≈100% recovery) | Full |
+| **B — Deterministic** | Value encrypted; same value → same token | Represents common "encrypted database" practice | High: frequency + volume + linkage leak |
+| **C — Naive decoys** | B + random/simple decoy records to flatten frequency | Baseline defence; shows decoys help but are filterable | Reduced, but a realism-filtering attacker recovers much of it |
+| **D — Generative decoys (our solution)** | B + GAN-generated realistic decoys + secret real/decoy ID function + per-collection keys + name tokenisation | The contribution | Substantially reduced and *resistant* to the realism filter |
 
-Each approach is applied **identically on every engine** (a collection/table holding the same records in each of the six databases).
+Approach **D** combines four layers, each closing one leak:
 
-| Approach | What it is | Query support | Expected leakage | Expected performance |
-|---|---|---|---|---|
-| **A — Plaintext baseline** | Unencrypted field (Mongo) / column (SQL) | Full/native | Everything (control) | Fastest; the reference point |
-| **B — Deterministic / property-preserving** | Sensitive field/column encrypted so equality (deterministic) and/or range (OPE-style bucketed) queries still work; e.g., deterministic AES for equality, order-preserving encoding for ranges | Equality (+ range) | High: access pattern, volume, ordering/frequency | Small overhead; near-baseline latency |
-| **C — Leakage-reduced** | Same queries but leakage deliberately suppressed: **volume-hiding via fixed-size bucket padding** and/or **frequency-smoothing** so equal-valued records are indistinguishable and result sizes are padded to a common size | Equality (bucketed) | Reduced: access pattern partly masked, volume hidden | Higher latency + storage from padding — the cost of confidentiality |
+1. **Value encryption (per-collection keys).** The sensitive field is encrypted so equality queries still work, but with a *different key per collection*, so the same value (e.g. a `patient_code`) becomes a different token in `patients`, `lab_orders`, and `billing` — this breaks cross-collection linkage.
+2. **Generative decoy insertion.** A small generative model (see B.4.2) produces realistic fake records, added preferentially for rare values so the observed frequency of every value is flattened toward uniform — this hides the frequency/volume signal.
+3. **Secret real/decoy ID function (see B.4.1).** Which records are real is decided by a keyed function only the client can compute, so the server cannot filter decoys out.
+4. **Name tokenisation.** Collection and field names are replaced by opaque tokens (`col_9f3a`, `f_22b1`) via a client-held map, so structural metadata (a collection literally named `hiv_patients`) does not leak. This layer is *demonstrated*, not scored.
 
-You do **not** need to invent new cryptography. Approach C can be a well-known, implementable mitigation such as **fixed-bucket volume-hiding / padding** and **deterministic-with-salted-buckets frequency smoothing** — both are standard, codeable in Python, and directly reduce the leakage the attack exploits. This keeps the project achievable while still demonstrating the trade-off.
+### B.4.1 The secret real/decoy identification function (the "formula")
 
-**How each approach maps onto the engines** (only the storage adapter differs between engines; the encryption itself is shared client-side code):
+Every record — real or decoy — is stored on the server with an opaque identifier that looks random. The client **generates** these identifiers directly from a secret keyed formula, so that the client alone can later recompute exactly which identifiers it created and which of them are decoys, while the server and any attacker see one uniform, indistinguishable pool of records.
 
-| Engine | Family | Where ciphertext lives | Equality query (B/C) | Driver |
-|---|---|---|---|---|
-| PostgreSQL | SQL | `BYTEA` column | `SELECT ... WHERE field = token` | `psycopg2` |
-| MySQL | SQL | `VARBINARY`/`BLOB` column | `SELECT ... WHERE field = token` | `mysql-connector-python` |
-| MariaDB | SQL | `VARBINARY`/`BLOB` column | `SELECT ... WHERE field = token` | `mariadb` (or `mysql-connector`) |
-| MongoDB | NoSQL (document) | field in a BSON document | `find({field: token})` | `pymongo` |
-| Couchbase | NoSQL (document) | field in a JSON document | N1QL/SQL++ `SELECT ... WHERE field = token` | `couchbase` SDK |
-| Cassandra | NoSQL (wide-column) | column (`blob`) with secondary index | CQL `SELECT ... WHERE field = token` | `cassandra-driver` |
+**Definition.** Let `k` be a secret key generated on the client and never sent to the server. Records are created in a fixed sequence with a counter `i = 0, 1, 2, …`. For each record the client derives its server-visible identifier and its real/decoy status from `k` and `i`:
 
-The three SQL engines share the same standard-SQL adapter with only the driver and a few type names changed, so MySQL and MariaDB cost almost nothing to add on top of PostgreSQL. Range queries (Approach B, OPE field) use `WHERE field BETWEEN ? AND ?` on the SQL engines, `$gte/$lte` on MongoDB, and the equivalent N1QL/CQL range predicate; volume-hiding (Approach C) pads rows/documents per bucket identically in every engine. **Note:** Cassandra requires a secondary index (or a suitable partition-key design) for equality on a non-key field, and pure key-value stores such as Redis are excluded because they cannot answer an equality query over an encrypted field. Pina et al. [7], already cited in your literature review, implemented the AES-over-PostgreSQL variant of Approach B, giving a peer-reviewed precedent for the SQL leg.
+```
+id(i)     =  HMAC_SHA256(k,  "id"  || i)              (truncated to the ID length)
+isDecoy(i) = 1   if   ( HMAC_SHA256(k, "tag" || i)  mod  (d + 1) )  ==  0
+             0   otherwise
+```
+
+where:
+- `HMAC_SHA256(k, ·)` is a keyed hash (a standard pseudo-random function); without `k` its output is computationally indistinguishable from random, so both the identifiers and the real/decoy pattern look random to anyone but the client,
+- `||` denotes concatenation, and the fixed strings `"id"` / `"tag"` domain-separate the two uses of the key,
+- `d` sets the decoy ratio: on average 1 decoy for every `d` real records (e.g. `d = 3` → about one quarter of records are decoys).
+
+Because **both** real and decoy identifiers are produced by the *same* formula `id(i)`, they are drawn from the same space and are indistinguishable on the server; only the separate, secret `isDecoy(i)` bit — which is never stored — tells them apart.
+
+**How records are created.** The client walks the counter `i`. For each `i` it computes `id(i)` and `isDecoy(i)`: if `isDecoy(i) = 0` it stores the next real record under `id(i)`; if `isDecoy(i) = 1` it stores a generative decoy (see B.4.2) under `id(i)`. No guessing or rejection sampling is needed — every identifier is produced deterministically from the key and the counter.
+
+**How the user gets the right data back.** The client only needs to keep `k` and the current counter value. To recover its data it regenerates the identifiers, and for any record returned by a query it recomputes `isDecoy` for that identifier's index: it **keeps the real records, discards the decoys, decrypts the values, and returns the clean result to the user.** Equivalently, since the mapping is deterministic, the client can precompute the set of real identifiers directly from `k`. The user therefore always sees correct, decoy-free data.
+
+**Why the attacker cannot do the same.** Regenerating or classifying the identifiers requires the secret key `k`. Without it, both `id(i)` and `isDecoy(i)` are pseudo-random, so the attacker sees a uniform pool of random-looking identifiers and cannot tell which were client-generated as real and which as decoy. This is the asymmetry that makes the scheme work: **the same secret that protects the data also generates, and conceals, which records are real.** (A simpler variant stores an encrypted flag `AES_enc(k, is_real)` in each record and filters on the decrypted flag; the generative keyed form above is preferred because the real/decoy partition is *derived from the key*, not stored anywhere, so there is nothing extra on the server for an attacker to target.)
+
+This formula is written once, lives only in the client code, and its key is held only on the client — satisfying the requirement that *only the user site can generate the decoy and real identifiers and later recompute which is which.*
+
+### B.4.2 The generative decoy model
+
+The decoys must be **realistic complete records**, not just padded values, otherwise the attacker's realism filter (allowed in the threat model) discards them — which is exactly the weakness of Approach C. A small generative model is trained on the real records to learn the joint distribution of the fields (e.g. that a given `specific_diagnostic_test` co-occurs with plausible `age_category`, `race_category`, and companion tests). It then generates fake records that are individually plausible. The *targeting policy* decides how many decoys to generate for each value so that the aggregate frequency is flattened. Together: the model gives per-record realism (defeats the filter), and the targeting gives aggregate frequency-flattening (defeats the count attack).
+
+A full GAN is not required for the effect; a lightweight generative model (a small tabular GAN such as CTGAN, or a simpler conditional sampler that preserves field co-occurrence) is sufficient and keeps the build achievable. The choice is recorded in the report, and Approach C uses a deliberately naive generator (independent random field values) so the C-vs-D comparison isolates the value of realistic generation.
 
 ### B.5 Dataset
 
-- Use a **public, realistic dataset** with clearly sensitive attributes so leakage is meaningful and reproducible — e.g., a synthetic-but-realistic healthcare or e-commerce dataset, or a public Kaggle dataset (state the source and licence). The **same source records are loaded into every engine** (documents in MongoDB/Couchbase, rows in the SQL engines, wide-column rows in Cassandra) so the comparison is fair.
-- Use **3 scale points** obtained by sub-sampling the dataset — **1k / 10k / ~29k records** (the ~29k being the full dataset) — so you can show how leakage-attack accuracy and performance overhead change with data size (feeds Results scalability discussion). The security (recovery-accuracy) result saturates well before 29k, so this range is sufficient for the attack; the scalability curve will be modest in magnitude, which should be stated plainly rather than over-claimed. If a larger stress point is wanted later, Synthea can generate additional rows without changing the pipeline, and that extra point can be run on the two primary engines only.
-- Pick 1–2 **sensitive query fields** (e.g., `diagnosis`, `city`, `salary_band`) as the attack target.
+- The project uses the profiled healthcare dataset (source: the supplied Excel file, **826,843 records**), with **`specific_diagnostic_test`** as the primary sensitive/attack field (297 distinct values, strongly skewed — see B.5.1) and **`patient_code`** as the key that links the three collections.
+- **Three-collection schema** derived from the dataset, linked by `patient_code`: `patients` (one row per patient with `race_category`, `age_category`), `lab_orders` (one row per test event with `specific_diagnostic_test`, `diagnostic_test_category`), and `billing` (one row per test event with a derived cost field). The single-collection tests use `lab_orders` alone.
+- **3 scale points** by sub-sampling — **1k / 10k / full (826,843)** — with a fixed seed, so scalability can be shown. The security result saturates well before the full size; the largest point is the stress/scalability point and may be run on the primary engine only.
 
-### B.5.1 Dataset Sanity Check (do this before anything else)
+### B.5.1 Dataset Sanity Check (already completed — gate before building)
 
-Before building the workload, encryption, or adapters, the dataset must be validated, because the whole leakage-abuse attack depends on the sensitive field having the right statistical shape. If this check fails, the results will be meaningless (for example, the attack will look artificially strong or artificially weak for the wrong reasons), so this is a required gate, not an optional step. Run a short profiling script on the raw dataset and confirm the following, recording the results in the report so the choice of dataset is justified and reproducible:
+The sanity check from the plan has been run and passed, and its results are recorded for the report: `specific_diagnostic_test` has **297 distinct values** (categorical, in the ideal range), **top-10 share 59%** and **max/min frequency ratio ~99,000×** (strongly skewed — exactly what the attack needs), **0% nulls**, and the skew **survives sub-sampling** (top-10 share ~59% at 1k, 10k, and full). Auxiliary knowledge (relative test-ordering frequencies) is realistic, analogous to published lab-utilisation statistics. Rejected alternatives (`diagnostic_test_category`, `race_category`, `age_category`) had too few categories or weaker skew. This validation justifies the field choice and must be reproduced by the committed profiling script.
 
-1. **The sensitive field is categorical, not free text or unique.** The attack matches values by how often they occur, so the target field (e.g. `diagnosis`/`condition`, `city`) must be a repeating category. Check the number of distinct values: a handful to a few hundred is ideal. A field that is unique per row (names, IDs, timestamps) or free text cannot be attacked this way and must not be used as the target.
+**`billing`'s derived `cost_category` field (multi-collection schema only) has a documented issue of its own, alongside the rejected fields above.** It was originally constructed with `pd.qcut` (equal-count quantile bins), which is uniform by definition and therefore has no real skew for decoys to flatten — a construction artifact, not a security result, if left as-is. This has since been fixed in code: `cost_category` is now built with fixed dollar-threshold tiers (`pd.cut`), carrying genuine skew from the underlying per-test cost distribution, and its recovery numbers now do move with the decoy ratio. It remains outside the headline value-recovery comparison regardless, since at only 4 candidate values it is still lower-cardinality than the vetted `specific_diagnostic_test`; it is reported as a supplementary, non-headline table.
 
-2. **The value distribution is skewed, not uniform.** Skew — some values very common, others rare — is exactly what a frequency- or count-matching attack exploits. Produce a frequency table and a histogram of the target field, and confirm it is uneven (ideally roughly Zipf-like). Report a simple skew indicator, for example the share taken by the top 10 values, or the ratio of the most common to the least common value. If the field is perfectly uniform, the attack has nothing to exploit and a different field or dataset should be chosen.
+### B.6 Query workload (identical across A/B/C/D)
 
-3. **There are enough distinct values to make recovery non-trivial but not impossible.** Too few categories (e.g. only 2–3, like a gender field) makes recovery trivial and uninteresting; too many near-unique values makes matching impossible. Aim for a field where the attacker has a real but non-trivial task.
+- A fixed set of **equality queries** over `specific_diagnostic_test` (single-collection) and over `patient_code` (for the cross-collection linkage test), drawn from a realistic skewed (Zipf-like) access distribution.
+- Fixed number of queries per run (e.g. 5,000), fixed seed, logged, and replayed identically against every approach on every engine. The workload file is committed for reproducibility.
 
-4. **Data quality is acceptable.** Check for and record the proportion of missing/null values in the target field, obvious duplicates, and inconsistent encodings (e.g. `"NYC"` vs `"New York"`), since these distort both the attack and the frequency model. Decide and document how they are handled (dropped, normalised, or kept).
+### B.7 The attacks (what makes the leakage measurable)
 
-5. **The dataset is large enough for the chosen scale points and the field stays skewed after sub-sampling.** Confirm the full set covers the top scale point, and re-check the frequency shape on the 1k and 10k samples — the skew must survive sub-sampling, otherwise the smaller scale points will behave differently for the wrong reason. Use a fixed random seed when sampling so the scale points are reproducible.
+Two attacks, both from the standard leakage-abuse literature, run identically on all approaches and engines:
 
-6. **Auxiliary knowledge is realistic.** The attacker uses general knowledge of how common each value is. Confirm that such a distribution is plausibly knowable in the real world (e.g. disease prevalence, city population) so the threat model is credible, and note the source of that auxiliary distribution.
+1. **Single-collection value recovery.** The attacker observes, per query, which encrypted records return and how many (access pattern + volume), and matches the observed frequency of each token to the known value distribution (a count/frequency-matching attack). Output: **value-recovery accuracy (%)**. For C and D the attacker first applies the **realism filter** to try to discard decoys before matching.
+2. **Cross-collection linkage recovery.** The attacker tries to link records belonging to the same `patient_code` across `patients`, `lab_orders`, and `billing` by spotting identical tokens or correlated access. Output: **linkage-recovery accuracy (%)** — the fraction of true cross-collection links the attacker reconstructs. Per-collection keys in Approach D are what this measures the effect of.
 
-The profiling script (distinct-value count, frequency table, histogram, top-10 share, null rate) is written once and committed to the repo, so the sanity check is itself reproducible. Only after the target field passes this check are the workload, encryption, and adapters built on top of it.
-
-### B.6 Query workload (identical across A/B/C)
-
-- A fixed set of **equality queries** (and range queries if you include OPE) over the sensitive field(s), drawn to mimic a realistic, skewed access distribution (Zipf-like), because skew is what leakage-abuse attacks exploit.
-- Fixed number of queries per run (e.g., 5,000), fixed seed, logged, and replayed **identically against all three approaches on every engine** (A/B/C × six engines). Store the workload file in the repo for reproducibility.
-
-### B.7 The attack (this is what makes gap #1 measurable)
-
-Implement a **documented access-pattern / volume leakage-abuse attack** as the *security metric generator*:
-
-1. The adversary module records, for each observed query, the set/count of returned encrypted record IDs (access pattern + volume). This observation is **engine-independent** — the attacker sees the same access-pattern/volume signal whether the records came from a MongoDB collection or a PostgreSQL table, so the exact same attack code runs against both.
-2. Using auxiliary knowledge of the field's value distribution, it matches observed query "fingerprints" to candidate plaintext values (a count/frequency-matching attack such as the classic **count attack** or a **Sap/IHOP-style** frequency-matching approach).
-3. Output = **query-recovery accuracy (%)**: fraction of queries whose true plaintext value the adversary correctly recovered.
-4. Run the *same* attack against A (should be ~100%, sanity check), B (expected high), and C (expected substantially lower) **on every engine**. The **drop in recovery accuracy from B to C is your headline security result**, and the fact that B leaks at similar accuracy across *all six* engines (and across both families) is your proof that the leakage is strategy-intrinsic, not engine-specific.
-
-> Keep the attack faithful but simple: a frequency/count-matching attack is well documented, implementable in Python, and sufficient to show the effect. Cite the paper you base it on `[X4]`.
+Sanity check: Approach A must give ≈100% on the value attack; if not, the attack code is wrong.
 
 ### B.8 Metrics and required outputs (feed Results Section 5)
 
-**Raw metrics to log.** For every configuration (Approach A/B/C × 6 engines × 3 scale points × N repeats) the pipeline records:
+**Security metrics:** value-recovery accuracy (%), linkage-recovery accuracy (%), each per approach, engine, schema, and scale; plus the **B→D and C→D drops** (percentage points) as the headline numbers.
 
-*Security*
-- Query-recovery accuracy (%) per approach, engine, and scale point.
-- (Optional) value-recovery accuracy for the target field.
+**Performance metrics:** mean/p95 latency, throughput, CPU, storage + expansion factor, reported as **before/after (B vs D) change** per engine against that engine's own plaintext baseline.
 
-*Performance*
-- Mean and p95 query latency (ms).
-- Throughput (queries/sec).
-- CPU utilisation (%) during the workload.
-- Storage size: data + index (MB) and ciphertext expansion factor vs. plaintext.
-- (Optional) client-side encryption time.
+**Derived values the pipeline outputs directly:** per-engine latency/storage overhead of C and D vs A; B→D and C→D accuracy drops; the range of results across the three engines (consistency); run-to-run variance across repeats.
 
-**Derived values to compute** (these are what the discussion is written around, so the pipeline should output them directly, not leave them to be worked out by hand):
-- **Performance overhead of B and of C relative to A**, as a percentage, computed *per engine* against that engine's own plaintext baseline.
-- **Storage-expansion factor** of B and C vs. A (×).
-- **B→C recovery-accuracy drop**, in percentage points, per engine — the headline security number.
-- **Range of Approach-B accuracy across the six engines** (min–max), to evidence cross-engine consistency.
-- **Ranking of engines by Approach-C overhead** (which engine paid the least to reduce leakage).
-- **Variance / confidence interval across the N repeated runs** for latency and recovery accuracy, so stability can be reported.
-
-**Exact deliverables the Results section consumes.** The pipeline (or the analysis notebook) must emit the following, which map one-to-one onto Section 5:
+**Named deliverables for Section 5:**
 
 | ID | Deliverable | Content |
 |---|---|---|
-| Table 1 | Performance per approach × engine (at the largest scale point) | latency, throughput, CPU, storage; three rows (A/B/C) per engine |
-| Table 2 | Recovery accuracy per approach × engine (%) | one column each for A/B/C; one row per engine |
-| Fig. 1 | Latency vs. dataset size (line chart) | x = 1k/10k/29k, y = mean latency, one line per approach (one chart per engine, or overlaid) |
-| Fig. 2 | Recovery accuracy by approach × engine (grouped bar) | x = approach, bars = engines, y = recovery accuracy % |
-| Fig. 3 | Security–performance trade-off (scatter) | x = overhead % vs. baseline, y = recovery accuracy %, one point per approach (per engine or averaged) |
+| Table 1 | Performance per approach × engine (largest scale) | latency, throughput, CPU, storage; four rows (A/B/C/D) per engine |
+| Table 2 | Value-recovery accuracy per approach × engine (%) | one column each A/B/C/D; one row per engine |
+| Table 3 | Cross-collection linkage-recovery accuracy, before (B) vs after (D) | per engine, three-collection schema |
+| Fig. 1 | Latency vs. dataset size (line) | x = 1k/10k/full, y = latency, one line per approach |
+| Fig. 2 | Value-recovery accuracy by approach × engine (grouped bar) | shows the B→C→D reduction, and that C is defeated by the realism filter while D is not |
+| Fig. 3 | Security–performance trade-off (scatter) | x = overhead % vs. baseline, y = recovery accuracy %, one point per approach |
+| **Fig. 4** | **Before/after DATA view** | a single example record shown in each state: plaintext (A), encrypted (B), and encrypted-with-solution (D), side by side, so readers see what changes |
+| **Fig. 5** | **Before/after METADATA view** | (a) frequency histogram of the sensitive field before (skewed) vs. after decoys (flattened); (b) a linkage diagram showing the same `patient_code` sharing one token across collections before, vs. different tokens after; (c) collection/field names before vs. tokenised after |
 
-Producing these five artefacts plus the derived values above is the definition of "done" for the experiment, and they are exactly the tables and figures the Results and Discussion section is built to receive. Export the raw per-run logs to CSV so all tables, figures, and derived values can be regenerated by a single analysis script for reproducibility.
+Export all raw per-run logs to CSV so every table and figure regenerates from one analysis script.
+
+**The before/after visualisations (Fig. 4 and Fig. 5) are a required output**, because the whole point of the study is to *show* the difference the solution makes. Fig. 4 makes the record-level change concrete (readable value → ciphertext → ciphertext-plus-hidden-decoys). Fig. 5 makes the metadata-level change concrete: the flattened histogram is the visual proof that frequency leakage is gone, and the linkage diagram is the proof that cross-collection linkage is broken.
 
 ### B.9 Tools & technologies
 
-**Shared (engine-independent) core**
-- **Python** — client-side encryption layer, query encoder, workload driver, and attack module (`cryptography`/`pycryptodome`, `numpy`, `pandas`). This code is written once and reused for every engine.
-- **`psutil`** for CPU, Python `time.perf_counter` for latency, **`matplotlib`** for the Results figures.
-- **Repo:** public GitHub with code, workload files, dataset link/loader, and a README with exact run steps for every engine (the assignment requires a public repo link).
+**Shared core (Python):** value encryption (`cryptography`/`pycryptodome`), the `HMAC`/`hashlib` secret ID function, the generative decoy model (`ctgan`/`sdv` for a small tabular GAN, or a custom conditional sampler with `numpy`/`pandas`), the workload driver, and the two attack modules. Written once, reused for all engines.
 
-**SQL engines**
-- **PostgreSQL** (primary) — driver **`psycopg2`**; storage via `pg_total_relation_size()`/`pg_relation_size()`; query cost via `EXPLAIN ANALYZE` and `pg_stat_statements`. Optional `pgcrypto` for an in-DB AES variant of Approach B matching Pina [7].
-- **MySQL** — driver **`mysql-connector-python`**; storage via `information_schema.TABLES` (`DATA_LENGTH` + `INDEX_LENGTH`); query cost via `EXPLAIN ANALYZE` / `performance_schema`.
-- **MariaDB** — driver **`mariadb`** (the `mysql-connector` also works, as the protocol is shared); same measurement approach as MySQL. MariaDB is a near-twin of MySQL, so its adapter is essentially the MySQL adapter.
+**NoSQL engines & drivers:** MongoDB (`pymongo`; storage via `db.collection.stats()`), Couchbase (`couchbase` SDK, N1QL/SQL++), Cassandra (`cassandra-driver`, CQL with a secondary index for equality on the sensitive field; storage via `nodetool tablestats`).
 
-**NoSQL engines**
-- **MongoDB** (primary, mandatory) — driver **`pymongo`**; storage via `db.collection.stats()`; ops/CPU via `mongostat`/`serverStatus`. Optionally note MongoDB's built-in **Queryable Encryption / CSFLE** as the real-world instance of Approach B.
-- **Couchbase** — driver **`couchbase`** (Python SDK); queries in **N1QL/SQL++**; storage/latency via the Couchbase metrics API or the admin UI.
-- **Cassandra** — driver **`cassandra-driver`**; queries in **CQL** (equality on a non-key field needs a secondary index); storage via `nodetool tablestats`.
+**Measurement & output:** `psutil` (CPU), `time.perf_counter` (latency), `matplotlib` (all figures, including the before/after views). Public GitHub repo with code, the seeded workload, the profiling script, the dataset loader, and a README with exact run steps.
 
-All three SQL adapters are nearly identical (standard SQL, only the driver and a few type names change), and the two extra document/wide-column adapters follow the same `store()`/`query()` interface as MongoDB. Because the encryption, workload, and attack are shared code, each additional engine costs only one small storage adapter plus its measurement calls.
+### B.10 Step-by-step execution
 
-### B.10 Step-by-step execution (maps to Methodology 4.3)
+1. **Environment setup** — fixed hardware; pinned versions of Python, MongoDB, Couchbase, Cassandra.
+2. **Data prep + sanity check** — build the three-collection schema (linked by `patient_code`); the B.5.1 sanity check is already passed and its script is committed.
+3. **Build the shared core** — value encryptor (per-collection keys), the secret ID-generation function `id(i)`/`isDecoy(i)` (B.4.1), the generative decoy model, the query encoder, the two attack modules.
+4. **Build the three storage adapters** — MongoDB, Couchbase, Cassandra (`store()`/`query()` behind one interface).
+5. **Build the four approaches** — A plaintext; B deterministic; C deterministic + naive decoys; D deterministic + generative decoys + secret IDs + per-collection keys + name tokenisation.
+6. **Workload generation** — one seeded query set, frozen and committed.
+7. **Run performance experiments** — replay the workload for A/B/C/D × 3 engines × scales × repeats; log latency/throughput/CPU/storage.
+8. **Run security experiments** — value-recovery attack (with realism filter for C/D) and cross-collection linkage attack on every configuration; log recovery accuracies.
+9. **Analysis** — compute derived values and generate Tables 1–3 and Figs 1–5 (including the before/after data and metadata views) from the CSV logs.
+10. **Validation** — sanity-check A (≈100% recovery, lowest latency); repeat runs and report variance; compare overheads to the literature.
+11. **Write-up** — feed all deliverables into Results; link back to the objectives and to prior work (B.13).
 
-1. **Objectives** — restate the measurable objectives from the Introduction (now including "hold across multiple SQL and NoSQL engines").
-2. **Environment setup** — fixed VM/laptop spec (state RAM/cores); pinned versions of Python, **MongoDB, and PostgreSQL**.
-3. **Data prep and sanity check** — load the same dataset into every engine at each scale point; identify the sensitive field(s); and **run the B.5.1 dataset sanity check first** (categorical, skewed, enough distinct values, acceptable quality, skew survives sub-sampling). Only proceed once the target field passes; record the profiling results for the report.
-4. **Build the shared core** — encryption/bucketiser layer, query encoder, seeded workload driver, attack module (engine-independent).
-5. **Build the two storage adapters** — MongoDB (`pymongo`) and PostgreSQL (`psycopg2`), each exposing `store()`/`query()` for approaches A/B/C.
-6. **Workload generation** — generate and freeze one query set (seeded) used everywhere.
-7. **Run performance experiments** — replay the workload on **A/B/C × {MongoDB, PostgreSQL} × 3 scale points × N repetitions**; log latency/throughput/CPU/storage.
-8. **Run security experiments** — execute the leakage-abuse attack on A/B/C for **every engine**; record recovery accuracy.
-9. **Analysis** — from the CSV logs, compute the derived values in B.8 (per-engine overhead of B and C, B→C accuracy drop, cross-engine accuracy range, run-to-run variance) and generate the five named deliverables: **Table 1, Table 2, and Fig. 1–3**. Compare overhead vs. **each engine's own plaintext baseline** and check cross-engine consistency of the leakage.
-10. **Validation** — sanity-check A on every engine (attack ≈100%, latency lowest); compare overheads against published figures; repeat runs to report variance.
-11. **Write-up** — feed tables/figures into Results; show the pipeline works for both SQL and NoSQL; link findings back to the literature review (leakage papers, performance papers).
+### B.11 Team split (3 members)
 
-### B.11 Team split (3 members, ~equal load)
-
-- **Member 1 — Data, workload & repo:** dataset prep and loading into every engine, **the B.5.1 sanity check and profiling script**, scale points, seeded workload generator, repo/README.
-- **Member 2 — Encryption & storage adapters:** shared client-side encryption layer (A/B/C) plus one small `store()`/`query()` adapter per engine (start with MongoDB + PostgreSQL, then MySQL/MariaDB/Couchbase/Cassandra) behind a single interface, and storage/latency instrumentation. *(The encryption is shared, so each extra adapter is a small addition — only the store/query functions differ per engine, and the three SQL adapters are nearly identical.)*
-- **Member 3 — Adversary & analysis:** leakage-abuse attack module (engine-independent), metric collection, cross-engine plots, statistical validation.
-- All three co-write the section that maps to their component.
+- **Member 1 — Data, schema, workload, repo:** three-collection build, sanity-check script, seeded workload, before/after data/metadata visualisations (Fig. 4–5), repo/README.
+- **Member 2 — Crypto & solution:** value encryption + per-collection keys, the secret ID-generation function (B.4.1), the generative decoy model, and the three engine adapters.
+- **Member 3 — Attacks & analysis:** value-recovery and linkage attacks (incl. realism filter), metric collection, Tables 1–3, Figs 1–3, statistical validation.
 
 ### B.12 Expected results (hypotheses to confirm)
 
-- A: recovery ≈ 100%, lowest latency/storage — the control (on every engine).
-- B: near-baseline performance but **high** recovery accuracy → *querying leaks; encrypted ≠ confidential.*
-- C: **markedly lower** recovery accuracy at the cost of higher latency and storage (padding) → *the confidentiality–performance trade-off, quantified on one common benchmark.*
-- **Cross-engine:** the attack recovers plaintext at **similar accuracy across all six engines and both families** → the leakage is **strategy-intrinsic, not engine-specific** (this is the "works across SQL and NoSQL" proof your lecturer asked for, now demonstrated on six engines). The *performance* overhead, by contrast, varies by engine → the practical cost of confidentiality is engine-dependent even when the security behaviour is not, and the near-twin MySQL/MariaDB pair is a useful internal control.
-- Recovery accuracy and overhead both shift with data scale, giving a scalability story.
+- **A:** ≈100% recovery, fastest/smallest — control.
+- **B:** high value-recovery and high linkage-recovery → *encrypted data still leaks when queried.*
+- **C/D vs. `decoy_ratio` (confirmed, MongoDB, `lab_orders`):** recovery does **not** fall gradually as the decoy ratio increases from 0.5 to 1.0 — it stays roughly flat (~93%→~33–40%) at 0.5–0.75, then **collapses sharply only at full flattening (ratio = 1.0)**. This is a cliff, not a slope, and it is the single strongest result in the study. Under full flattening, the C-vs-D contrast is exactly as hypothesised: naive decoys (**C**) are still partially recoverable once the attacker applies the realism filter (filtered ≈ 22%), while generative decoys (**D**) stay at 0% even under the filter. **This C→D gap under the realism filter at the cliff (≈22 percentage points) is the headline contribution number.**
+- **Linkage:** A/B/C ≈ 100%, **D collapses to 0%** (per-collection keys), confirmed **consistent across all three scale points (1k/10k/30k)** — a clean, scale-independent result.
+- **Cross-engine consistency:** only partially evaluated (see Scope) — MongoDB is the fully confirmed engine; the same pattern is expected, not yet re-confirmed end-to-end, on Couchbase/Cassandra if the optional appendix is run.
+- **Before/after views:** the histogram visibly flattens (frequency leak removed) and the cross-collection tokens visibly diverge (linkage broken).
 
-This is exactly the "controlled, common-workload, common-threat-model comparison" your literature review says is missing — and demonstrating it on **six engines spanning both SQL and NoSQL families** turns your single global pipeline into a general result rather than a MongoDB-only artefact.
+### B.13 Relation to prior work (novelty scoping — put a short version in the report)
 
-### B.13 Risks & limitations (pre-empt for Methodology 4.6 / Conclusion)
+The building blocks are established and **must be cited**, not claimed: the frequency/count attack on deterministic encryption is from Naveed, Kamara & Wright (ACM CCS 2015); the limits of padding-style defences are from Cash et al. (2016); volume-hiding for multi-maps is from Patel, Persiano, Yeo & Yung (ACM CCS 2019). What this project contributes is **not a new primitive** but (i) using a *generative model* to produce decoys that resist a realism-filtering attacker — an application not covered by the padding/decoy literature; (ii) a *common-benchmark* evaluation across three NoSQL engines (document and wide-column), where prior work is almost entirely SQL/abstract; and (iii) a combined single- and multi-collection measurement with an explicit before/after view. This framing is honest and defensible: it is novel as an application and setting, and citing the prior attacks strengthens rather than weakens the report.
 
-- **Synthetic/public data** may not mirror real skew — acknowledge and mitigate by testing a realistic distribution.
-- **One attack ≠ all attacks** — your accuracy numbers are a lower bound on leakage; state this.
-- **Approach C is a mitigation, not a proof of security** — frame it as *leakage reduction*, not elimination.
-- **Single-server, honest-but-curious scope** — note that malicious or colluding adversaries are out of scope.
-- **Cross-engine performance is not directly comparable** — the six engines have different query planners and storage formats, so raw millisecond/MB numbers should **not** be compared engine-to-engine. Report performance as **relative overhead against each engine's own plaintext baseline**; only the *security* results (recovery accuracy) are compared directly across engines. This keeps the cross-engine claim fair.
-- **Scope of the extended engines** — the four additional engines (MySQL, MariaDB, Couchbase, Cassandra) may be run at fewer scale points or repeats than the two primary engines if time is constrained; this is a deliberate phasing choice (see B.2), not a flaw. Cassandra needs a secondary index for equality on a non-key field, and pure key-value stores (e.g., Redis) are out of scope because they cannot answer equality queries over an encrypted field.
+### B.14 Risks & limitations (pre-empt for Methodology / Conclusion)
+
+- **Reduces, does not eliminate.** The raw physical access pattern is only fully hidden by ORAM-class methods (proven ≥ logarithmic overhead); this solution lowers *measured* recovery, and the residual is stated plainly.
+- **One attack family = a lower bound.** Recovery accuracy is a lower bound on true leakage; other attacks may do better.
+- **Decoys cost resources.** Extra storage, bandwidth, and client-side filtering — measured explicitly as the Approach-D overhead.
+- **Generative-model quality bounds the defence.** If the generator is poor, decoys become filterable; the C-vs-D comparison makes this dependency visible rather than hiding it.
+- **Network-level metadata (timing, packet sizes) is out of scope** (below the DB layer) and named as future work, alongside reactive detect-and-respond defences against active attackers.
+- **Cross-engine performance is not directly comparable** (different planners/storage); compare only relative overhead vs. each engine's own baseline, while security results are compared directly across engines.
 
 ---
 
 ### Marking-rubric checklist (Introduction, C2 = 3 marks)
 
 - [x] **Overview of prior literature (1 mark)** — General Background connects DBMS → encryption → encrypted search, each cited.
-- [x] **Problem statement (1 mark)** — decision-useful: names the "encrypted = secure" misconception and the missing common comparison, with consequences for long-term data-protection decisions.
-- [x] **Objectives (1 mark)** — four explicitly measurable/testable objectives (accuracy %, latency ms, throughput, overhead %).
-- [x] Supporting high-quality references (IEEE/ACM/Elsevier/Springer), IEEE in-text style, presented in logical order.
+- [x] **Problem statement (1 mark)** — decision-useful: names the "encrypted = secure" misconception and the missing common comparison.
+- [x] **Objectives (1 mark)** — measurable/testable (recovery %, linkage %, latency, overhead %), now including the before/after and multi-collection dimensions.
+- [x] Supporting high-quality references (IEEE/ACM/Elsevier/Springer), IEEE in-text style, in logical order.

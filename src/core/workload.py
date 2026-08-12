@@ -39,13 +39,14 @@ def generate_workload(
     return queries
 
 
-def workload_path(scale: int) -> str:
-    return os.path.join(config.DATA_PROCESSED_DIR, f"workload_scale{scale}.json")
+def workload_path(scale: int, label: str = "") -> str:
+    suffix = f"_{label}" if label else ""
+    return os.path.join(config.DATA_PROCESSED_DIR, f"workload_scale{scale}{suffix}.json")
 
 
-def save_workload(queries: list[str], scale: int) -> str:
+def save_workload(queries: list[str], scale: int, label: str = "") -> str:
     os.makedirs(config.DATA_PROCESSED_DIR, exist_ok=True)
-    path = workload_path(scale)
+    path = workload_path(scale, label)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(queries, f)
     return path
@@ -56,11 +57,14 @@ def load_or_generate_workload(
     scale: int,
     sensitive_field: str = config.SENSITIVE_FIELD,
     n_queries: int = config.DEFAULT_N_QUERIES,
+    label: str = "",
 ) -> list[str]:
-    path = workload_path(scale)
+    """`label` disambiguates the cached workload file per collection/schema (e.g.
+    `multi_patients`) so different query fields at the same scale don't collide."""
+    path = workload_path(scale, label)
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             return json.load(f)
     queries = generate_workload(df, scale, sensitive_field, n_queries)
-    save_workload(queries, scale)
+    save_workload(queries, scale, label)
     return queries

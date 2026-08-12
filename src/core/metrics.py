@@ -16,6 +16,8 @@ FIELDNAMES = [
     "scale",
     "engine",
     "approach",
+    "schema",
+    "collection",
     "repeat",
     "n_queries",
     "mean_latency_ms",
@@ -25,7 +27,10 @@ FIELDNAMES = [
     "storage_mb",
     "ciphertext_expansion_factor",
     "recovery_accuracy",
+    "recovery_accuracy_filtered",
+    "linkage_recovery_accuracy",
     "n_unique_tokens",
+    "decoy_target_ratio",
 ]
 
 
@@ -35,6 +40,8 @@ class ResultRow:
     scale: int
     engine: str
     approach: str
+    schema: str  # "single" or "multi"
+    collection: str
     repeat: int
     n_queries: int
     mean_latency_ms: float
@@ -43,8 +50,11 @@ class ResultRow:
     cpu_percent: float
     storage_mb: float
     ciphertext_expansion_factor: float
-    recovery_accuracy: float
+    recovery_accuracy: float | None
+    recovery_accuracy_filtered: float | None
+    linkage_recovery_accuracy: float | None
     n_unique_tokens: int
+    decoy_target_ratio: float | None = None  # only set for C/D; see config.DECOY_TARGET_RATIOS
 
 
 def latency_summary(latencies_ms: list[float]) -> tuple[float, float]:
