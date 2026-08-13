@@ -3,7 +3,6 @@ __pycache__/
 .env
 data/raw/*.csv
 data/processed/
-results/raw_results.csv
 results/figures/
 results/tables/
 .venv/
