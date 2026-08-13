@@ -78,6 +78,7 @@ def write_table1_before_after_performance(df: pd.DataFrame) -> pd.DataFrame:
         for label, sub in [
             ("A", single[(single["scale"] == scale) & (single["approach"] == "A")]),
             ("B", single[(single["scale"] == scale) & (single["approach"] == "B")]),
+            ("C (ratio=1.0)", single[(single["scale"] == scale) & (single["approach"] == "C") & (single["decoy_target_ratio"] == 1.0)]),
             ("D (ratio=1.0)", single[(single["scale"] == scale) & (single["approach"] == "D") & (single["decoy_target_ratio"] == 1.0)]),
         ]:
             m = sub["mean_latency_ms"].mean()
@@ -96,10 +97,11 @@ def write_table1_before_after_performance(df: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(rows)
 
     lines = [
-        "# Table 1 — Before/after performance on lab_orders (A -> B -> D)\n",
-        "_D is shown at decoy_target_ratio=1.0 -- the operating point that actually collapses "
-        "recovery to 0% (Table 2), so this is the cost of the protection level that works, "
-        "not an arbitrary point on the sweep._\n",
+        "# Table 1 — Before/after performance on lab_orders (A -> B -> C -> D)\n",
+        "_C and D are both shown at decoy_target_ratio=1.0, the operating point that actually "
+        "collapses D's recovery to 0% (Table 2), so this is the cost of the protection level "
+        "that works, not an arbitrary point on the sweep -- and it isolates the extra cost D "
+        "pays over C for the same amount of padding (generative vs. naive decoy generation)._\n",
     ]
     cols = ["scale", "approach", "mean_latency_ms", "p95_latency_ms", "throughput_qps", "cpu_percent", "overhead_vs_A_pct"]
     lines.append("| " + " | ".join(cols) + " |")
@@ -115,14 +117,19 @@ def write_table1_before_after_performance(df: pd.DataFrame) -> pd.DataFrame:
 
 def plot_fig1_performance_before_after(table1: pd.DataFrame) -> None:
     fig, ax = plt.subplots(figsize=(8, 5.5))
-    label_color = {"A": APPROACH_COLOR["A"], "B": APPROACH_COLOR["B"], "D (ratio=1.0)": APPROACH_COLOR["D"]}
-    for label in ["A", "B", "D (ratio=1.0)"]:
+    label_color = {
+        "A": APPROACH_COLOR["A"],
+        "B": APPROACH_COLOR["B"],
+        "C (ratio=1.0)": APPROACH_COLOR["C"],
+        "D (ratio=1.0)": APPROACH_COLOR["D"],
+    }
+    legend_label = {"A": "A", "B": "B", "C (ratio=1.0)": "C", "D (ratio=1.0)": "D"}
+    for label in ["A", "B", "C (ratio=1.0)", "D (ratio=1.0)"]:
         s = table1[table1["approach"] == label].sort_values("scale")
-        ax.plot(s["scale"], s["mean_latency_ms"], marker="o", markersize=7, linewidth=2, color=label_color[label], label=label)
+        ax.plot(s["scale"], s["mean_latency_ms"], marker="o", markersize=7, linewidth=2, color=label_color[label], label=legend_label[label])
     ax.set_xscale("log")
     ax.set_xlabel("Dataset scale (records)", color=MUTED)
     ax.set_ylabel("Mean query latency (ms)", color=MUTED)
-    ax.set_title("Fig. 1 — Performance before/after: A -> B -> D on lab_orders", color=INK, fontsize=12, fontweight="bold")
     ax.legend(frameon=False)
     _style_axes(ax)
     fig.patch.set_facecolor(SURFACE)
@@ -138,6 +145,7 @@ def plot_fig1_performance_before_after(table1: pd.DataFrame) -> None:
 
 def write_table2_recovery_vs_ratio(df: pd.DataFrame, scale: int = HEADLINE_SCALE) -> pd.DataFrame:
     single = _single_lab_orders(df)
+    a_recovery = single[(single["scale"] == scale) & (single["approach"] == "A")]["recovery_accuracy"].mean()
     b_recovery = single[(single["scale"] == scale) & (single["approach"] == "B")]["recovery_accuracy"].mean()
     rows = []
     for ratio in RATIOS:
@@ -146,6 +154,7 @@ def write_table2_recovery_vs_ratio(df: pd.DataFrame, scale: int = HEADLINE_SCALE
         rows.append(
             {
                 "ratio": ratio,
+                "A": a_recovery,
                 "B": b_recovery,
                 "C_unfiltered": c["recovery_accuracy"].mean(),
                 "C_filtered": c["recovery_accuracy_filtered"].mean(),
@@ -157,15 +166,16 @@ def write_table2_recovery_vs_ratio(df: pd.DataFrame, scale: int = HEADLINE_SCALE
 
     lines = [
         f"# Table 2 — Value-recovery vs. decoy ratio (lab_orders, scale = {scale:,}) — THE CLIFF\n",
-        "_B has no decoy ratio; shown as a flat reference row. Recovery does not fall gradually "
+        "_A and B have no decoy ratio; shown as flat reference rows (A = plaintext sanity check, "
+        "~100%; B = deterministic encryption, no decoys). Recovery does not fall gradually "
         "with ratio -- it stays roughly flat at 0.5-0.75, then collapses only at full flattening "
         "(ratio=1.0). This is the single strongest security result in this study._\n",
     ]
-    lines.append("| ratio | B | C (unfiltered) | C (filtered) | D (unfiltered) | D (filtered) |")
-    lines.append("|---|---|---|---|---|---|")
+    lines.append("| ratio | A | B | C (unfiltered) | C (filtered) | D (unfiltered) | D (filtered) |")
+    lines.append("|---|---|---|---|---|---|---|")
     for _, r in out.iterrows():
         lines.append(
-            f"| {r['ratio']} | {r['B']:.1%} | {r['C_unfiltered']:.1%} | {r['C_filtered']:.1%} | "
+            f"| {r['ratio']} | {r['A']:.1%} | {r['B']:.1%} | {r['C_unfiltered']:.1%} | {r['C_filtered']:.1%} | "
             f"{r['D_unfiltered']:.1%} | {r['D_filtered']:.1%} |"
         )
     _write(lines, "table2_recovery_vs_ratio.md")
@@ -175,18 +185,20 @@ def write_table2_recovery_vs_ratio(df: pd.DataFrame, scale: int = HEADLINE_SCALE
 def plot_fig2_the_cliff(table2: pd.DataFrame) -> None:
     fig, ax = plt.subplots(figsize=(8, 5.5))
     x = table2["ratio"]
+    ax.axhline(table2["A"].iloc[0], color=APPROACH_COLOR["A"], linestyle=":", linewidth=1.5, label="A (plaintext, sanity check)")
     ax.axhline(table2["B"].iloc[0], color=APPROACH_COLOR["B"], linestyle="--", linewidth=1.5, label="B (no decoys, reference)")
     ax.plot(x, table2["C_filtered"], marker="D", markersize=8, linewidth=2.5, color=APPROACH_COLOR["C"], label="C — filtered (naive decoys)")
     ax.plot(x, table2["D_filtered"], marker="^", markersize=9, linewidth=2.5, color=APPROACH_COLOR["D"], label="D — filtered (generative decoys, ours)")
     ax.set_xticks(RATIOS)
     ax.set_xlabel("decoy_target_ratio", color=MUTED)
     ax.set_ylabel("Attacker query-recovery accuracy", color=MUTED)
-    ax.set_title("Fig. 2 — The cliff: recovery vs. decoy ratio (lab_orders)", color=INK, fontsize=13, fontweight="bold")
     ax.set_ylim(-0.05, 1.05)
-    ax.legend(frameon=False, loc="upper right")
+    # A and B both sit near the top of the plot (~0.93-1.0), so any in-plot legend location
+    # overlaps one of them -- place it below the axes instead.
+    ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=9)
     _style_axes(ax)
     fig.patch.set_facecolor(SURFACE)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0.06, 1, 1])
     os.makedirs(FIG_DIR, exist_ok=True)
     fig.savefig(os.path.join(FIG_DIR, "mongo_fig2_the_cliff.png"), dpi=160, facecolor=SURFACE)
     plt.close(fig)
@@ -234,7 +246,6 @@ def plot_fig4_linkage_before_after(linkage_table: pd.DataFrame) -> None:
     ax.set_xticklabels([f"{s:,}" for s in SCALES], color=INK)
     ax.set_xlabel("Dataset scale (records)", color=MUTED)
     ax.set_ylabel("Linkage-recovery accuracy", color=MUTED)
-    ax.set_title("Fig. 4 — Linkage before/after, by scale (scale-independence)", color=INK, fontsize=12, fontweight="bold")
     ax.set_ylim(top=1.15)
     ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4, fontsize=8)
     _style_axes(ax)
@@ -295,7 +306,6 @@ def plot_fig3_security_cost_tradeoff(table2: pd.DataFrame, table4: pd.DataFrame)
             ax.annotate(f"{approach}-{row['ratio']}", (row["expansion_factor"], recovery), textcoords="offset points", xytext=(8, 6), fontsize=8, color=MUTED)
     ax.set_xlabel("Storage-expansion factor (x, lab_orders)", color=MUTED)
     ax.set_ylabel("Recovery accuracy (filtered)", color=MUTED)
-    ax.set_title("Fig. 3 — Security-cost trade-off", color=INK, fontsize=12, fontweight="bold")
     ax.set_ylim(bottom=-0.05)
 
     from matplotlib.lines import Line2D
@@ -384,7 +394,6 @@ def plot_fig6_metadata_view() -> None:
     ax_hist.set_xticks(x)
     ax_hist.set_xticklabels(top_values, rotation=60, ha="right", fontsize=7, color=INK)
     ax_hist.set_ylabel("Observed record count", color=MUTED)
-    ax_hist.set_title("(a) specific_diagnostic_test frequency: ratio 0.5 vs. 1.0", color=INK, fontsize=11, fontweight="bold")
     _style_axes(ax_hist)
     # The ratio=1.0 bars are flat and tall across the whole chart (that's the point -- full
     # flattening), so there's no open space inside the axes for a legend, and the rotated
@@ -396,7 +405,6 @@ def plot_fig6_metadata_view() -> None:
 
     ax_link = axes[1]
     ax_link.axis("off")
-    ax_link.set_title("(b) Cross-collection linkage token", color=INK, fontsize=11, fontweight="bold")
     sample_code = str(lab_orders.iloc[0][config.LINK_FIELD])
     b_key = encryption.derive_token_key(None)
     tok_patients_b = encryption.deterministic_token(sample_code, key=b_key).hex()[:12]
@@ -416,8 +424,7 @@ def plot_fig6_metadata_view() -> None:
     )
 
     fig.patch.set_facecolor(SURFACE)
-    fig.suptitle("Fig. 6 — Before/after metadata view", color=INK, fontsize=13, fontweight="bold")
-    fig.subplots_adjust(left=0.05, right=0.97, top=0.92, bottom=0.42, wspace=0.25)
+    fig.subplots_adjust(left=0.05, right=0.97, top=0.98, bottom=0.42, wspace=0.25)
     fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.31, 0.02), ncol=3, frameon=False, fontsize=9)
     os.makedirs(FIG_DIR, exist_ok=True)
     fig.savefig(os.path.join(FIG_DIR, "mongo_fig6_metadata_view.png"), dpi=160, facecolor=SURFACE)

@@ -7,3 +7,4 @@ results/raw_results.csv
 results/figures/
 results/tables/
 .venv/
+.claude/

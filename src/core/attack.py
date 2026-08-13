@@ -52,20 +52,13 @@ class AttackResult:
     n_unique_tokens: int
 
 
-def run_count_attack(
-    approach: str,
-    executed: list[ExecutedQuery],
-    true_value_counts: dict[str, int],
-) -> AttackResult:
-    n = len(executed)
-
-    if approach == "A":
-        # The query itself is plaintext on the wire/in the query log: recovery is
-        # trivial by definition. Included as the sanity-check control (B.7 step 4).
-        return AttackResult(approach="A", n_queries=n, n_correct=n, recovery_accuracy=1.0, n_unique_tokens=n)
-
-    # 1. What the server/attacker actually observes: token -> (a representative
-    #    volume, the set of query occurrences that used it).
+def _token_guesses(
+    executed: list[ExecutedQuery], true_value_counts: dict[str, int]
+) -> tuple[dict[bytes, str], dict[bytes, list[ExecutedQuery]]]:
+    """The matching step shared by `run_count_attack` and `token_guess_table` (the latter
+    exists purely to expose this same computation's intermediate per-token guesses for
+    reporting/figures -- it must reuse this exact function, not a re-implementation, so
+    any figure built from it reflects the real algorithm rather than a stand-in)."""
     by_token: dict[bytes, list[ExecutedQuery]] = {}
     for q in executed:
         by_token.setdefault(q.token, []).append(q)
@@ -84,20 +77,34 @@ def run_count_attack(
     np.random.default_rng(0).shuffle(tokens)
     observed_volumes = [by_token[t][0].volume for t in tokens]
 
-    # 2. Auxiliary knowledge: true frequency of each candidate plaintext value.
-    #    Restrict to the top-k candidates (k = number of distinct tokens observed) by
-    #    true frequency, the standard reduction when the attacker doesn't know in
-    #    advance which values were queried at all.
+    # Auxiliary knowledge: true frequency of each candidate plaintext value. Restrict to
+    # the top-k candidates (k = number of distinct tokens observed) by true frequency, the
+    # standard reduction when the attacker doesn't know in advance which values were
+    # queried at all.
     candidates = sorted(true_value_counts.items(), key=lambda kv: kv[1], reverse=True)[: len(tokens)]
     candidate_values = [c[0] for c in candidates]
     candidate_counts = [c[1] for c in candidates]
 
-    # 3. Optimal assignment minimizing total |observed - candidate| error.
+    # Optimal assignment minimizing total |observed - candidate| error.
     cost = np.abs(np.subtract.outer(observed_volumes, candidate_counts)).astype(float)
     row_idx, col_idx = linear_sum_assignment(cost)
     token_to_guess = {tokens[r]: candidate_values[c] for r, c in zip(row_idx, col_idx)}
+    return token_to_guess, by_token
 
-    # 4. Score every individual query occurrence against its guessed value.
+
+def run_count_attack(
+    approach: str,
+    executed: list[ExecutedQuery],
+    true_value_counts: dict[str, int],
+) -> AttackResult:
+    n = len(executed)
+
+    if approach == "A":
+        # The query itself is plaintext on the wire/in the query log: recovery is
+        # trivial by definition. Included as the sanity-check control (B.7 step 4).
+        return AttackResult(approach="A", n_queries=n, n_correct=n, recovery_accuracy=1.0, n_unique_tokens=n)
+
+    token_to_guess, by_token = _token_guesses(executed, true_value_counts)
     n_correct = sum(1 for q in executed if token_to_guess.get(q.token) == q.true_value)
 
     return AttackResult(
@@ -105,8 +112,38 @@ def run_count_attack(
         n_queries=n,
         n_correct=n_correct,
         recovery_accuracy=n_correct / n if n else 0.0,
-        n_unique_tokens=len(tokens),
+        n_unique_tokens=len(by_token),
     )
+
+
+@dataclass
+class TokenGuessRow:
+    token: bytes
+    observed_volume: int
+    guessed_value: str
+    true_value: str
+    correct: bool
+
+
+def token_guess_table(
+    approach: str, executed: list[ExecutedQuery], true_value_counts: dict[str, int]
+) -> list[TokenGuessRow]:
+    """Per-token detail behind `run_count_attack`'s aggregate accuracy, for reporting: what
+    the attacker actually observed and guessed for each token, and whether it was right.
+    For reporting/figures only -- exists so a figure can show the real matching algorithm's
+    literal output rather than an illustration of it."""
+    token_to_guess, by_token = _token_guesses(executed, true_value_counts)
+    rows = []
+    for token, queries in by_token.items():
+        true_value = queries[0].true_value
+        guess = token_to_guess.get(token, "?")
+        rows.append(
+            TokenGuessRow(
+                token=token, observed_volume=queries[0].volume, guessed_value=guess,
+                true_value=true_value, correct=(guess == true_value),
+            )
+        )
+    return rows
 
 
 def apply_realism_filter(
