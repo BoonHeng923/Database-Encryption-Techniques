@@ -20,20 +20,6 @@ MONGO_URI = _env(
 )
 MONGO_DB = "encbench"
 
-COUCHBASE_HOST = _env("COUCHBASE_HOST", "localhost")
-COUCHBASE_BUCKET = _env("COUCHBASE_BUCKET", "encbench")
-COUCHBASE_USER = _env("COUCHBASE_USER", "encbench_user")
-COUCHBASE_PASSWORD = _env("COUCHBASE_PASSWORD", "encbench_pass")
-
-CASSANDRA_CONTACT_POINTS = _env("CASSANDRA_CONTACT_POINTS", "localhost").split(",")
-CASSANDRA_PORT = int(_env("CASSANDRA_PORT", "9042"))
-CASSANDRA_KEYSPACE = _env("CASSANDRA_KEYSPACE", "encbench")
-
-ARANGO_URL = _env("ARANGO_URL", "http://localhost:8529")
-ARANGO_DB = _env("ARANGO_DB", "encbench")
-ARANGO_USER = _env("ARANGO_USER", "root")
-ARANGO_PASSWORD = _env("ARANGO_PASSWORD", "encbench_pass")
-
 _key_b64 = os.environ.get("ENC_MASTER_KEY_B64", "")
 if _key_b64:
     ENC_MASTER_KEY = base64.b64decode(_key_b64)
@@ -65,21 +51,18 @@ RAW_EXCEL_PATH = os.path.join(DATA_RAW_DIR, "adult_inpatient_patient_portal_data
 
 # Plan B.5 scale points, revised: 1k / 10k / 30k -- the third point was originally the
 # full dataset (826,843) resolved dynamically via src.core.dataset.full_dataset_size(),
-# but that made the largest run impractically slow across multiple engines; 30k is fixed
+# but that made the largest run impractically slow; 30k is fixed
 # here instead as a deliberate scoping choice, large enough to show scaling behaviour
 # without the multi-hour runtime. `full_dataset_size()` is still available and used by the
 # B.5.1 sanity-check script, which profiles the true full dataset regardless of this list.
 SMALL_SCALE_POINTS = [1_000, 10_000]
 SCALE_POINTS = [1_000, 10_000, 30_000]
 DEFAULT_APPROACHES = ["A", "B", "C", "D"]
-# Couchbase, Cassandra, and ArangoDB adapters/docker services are all kept in the repo
-# (see the respective *_adapter.py files) but excluded from the default engine list and
-# from generate_report.py's output. Couchbase's sequential per-document KV upserts made
-# bulk_load too slow; Cassandra's secondary index scales poorly for this workload's
-# low-selectivity queries; ArangoDB's AQL cursor endpoint has a ~43ms fixed per-query
-# floor in this environment regardless of query complexity (verified down to the raw
-# HTTP layer). Given all three, the project is scoped to MongoDB only for now -- pass
-# `--engines mongo couchbase cassandra arangodb` explicitly to bring any of them back.
+# The study is scoped to MongoDB. The `engine` column is still carried through
+# metrics.py and generate_report.py (which filters on this list), so the pipeline stays
+# engine-agnostic by design -- adding an engine means one new StorageAdapter, not a
+# redesign. See SEG2102_Implementation_Details.md §7 for why the other candidate engines
+# were evaluated and then descoped.
 DEFAULT_ENGINES = ["mongo"]
 DEFAULT_REPEATS = 3
 DEFAULT_N_QUERIES = 5_000

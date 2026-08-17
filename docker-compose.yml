@@ -19,87 +19,16 @@ services:
       timeout: 5s
       retries: 10
 
-  couchbase:
-    image: couchbase:community-7.6.2
-    container_name: encbench_couchbase
-    restart: unless-stopped
-    ports:
-      - "8091-8096:8091-8096"
-      - "11210:11210"
-    volumes:
-      - couchbasedata:/opt/couchbase/var
-    healthcheck:
-      # Cluster/bucket bootstrap is done lazily by CouchbaseAdapter.setup() itself (plan
-      # requirement: self-heals across down/up without a fragile compose-time init
-      # script), so the healthcheck only waits for the web UI/REST port to answer.
-      test: ["CMD-SHELL", "curl -sf http://localhost:8091/pools/default > /dev/null || curl -sf http://localhost:8091/pools > /dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 60s
-
-  cassandra:
-    image: cassandra:5
-    container_name: encbench_cassandra
-    restart: unless-stopped
-    ports:
-      - "9042:9042"
-    volumes:
-      - cassandradata:/var/lib/cassandra
-    healthcheck:
-      test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
-      interval: 15s
-      timeout: 10s
-      retries: 15
-      start_period: 60s
-
-  arangodb:
-    image: arangodb:3.12
-    container_name: encbench_arangodb
-    restart: unless-stopped
-    environment:
-      ARANGO_ROOT_PASSWORD: encbench_pass
-    ports:
-      - "8529:8529"
-    volumes:
-      - arangodata:/var/lib/arangodb3
-    healthcheck:
-      # The arangodb image ships BusyBox wget (no curl, no --user/--password flags, and
-      # user:pass@host in the URL fails to connect in this image) -- pre-encoded Basic
-      # auth header against 127.0.0.1 (not `localhost`, which this wget fails to resolve
-      # here) is what actually works. root:encbench_pass base64-encoded.
-      test: ["CMD-SHELL", "wget -q -O- --header='Authorization: Basic cm9vdDplbmNiZW5jaF9wYXNz' http://127.0.0.1:8529/_api/version > /dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
-
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: encbench_app
-    # Only the two *default* engines (config.DEFAULT_ENGINES) gate app startup --
-    # couchbase/cassandra are kept available (env vars below still point at their
-    # containers) but aren't required to be up/healthy since they're off by default.
     depends_on:
       mongo:
         condition: service_healthy
-      arangodb:
-        condition: service_healthy
     environment:
       MONGO_URI: mongodb://encbench_user:encbench_pass@mongo:27017/encbench?authSource=encbench
-      COUCHBASE_HOST: couchbase
-      COUCHBASE_BUCKET: encbench
-      COUCHBASE_USER: ${COUCHBASE_USER:-encbench_user}
-      COUCHBASE_PASSWORD: ${COUCHBASE_PASSWORD:-encbench_pass}
-      CASSANDRA_CONTACT_POINTS: cassandra
-      CASSANDRA_PORT: 9042
-      CASSANDRA_KEYSPACE: encbench
-      ARANGO_URL: http://arangodb:8529
-      ARANGO_DB: encbench
-      ARANGO_USER: root
-      ARANGO_PASSWORD: encbench_pass
       ENC_MASTER_KEY_B64: ${ENC_MASTER_KEY_B64}
       DECOY_KEY_B64: ${DECOY_KEY_B64}
     volumes:
@@ -109,6 +38,3 @@ services:
 
 volumes:
   mongodata:
-  couchbasedata:
-  cassandradata:
-  arangodata:

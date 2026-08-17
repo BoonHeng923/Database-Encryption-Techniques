@@ -31,22 +31,11 @@ ENGINE_FACTORIES = {}
 
 
 def _get_engine_factories():
-    # Imported lazily so `--engines mongo` doesn't require the couchbase/cassandra
-    # drivers to be importable (and vice versa), which matters when engines are brought
-    # up one at a time (plan verification steps 2-3).
+    # Imported lazily so importing this module doesn't pull in the driver.
     if not ENGINE_FACTORIES:
         from src.core.adapters.mongo_adapter import MongoAdapter
 
         ENGINE_FACTORIES["mongo"] = MongoAdapter
-        from src.core.adapters.couchbase_adapter import CouchbaseAdapter
-
-        ENGINE_FACTORIES["couchbase"] = CouchbaseAdapter
-        from src.core.adapters.cassandra_adapter import CassandraAdapter
-
-        ENGINE_FACTORIES["cassandra"] = CassandraAdapter
-        from src.core.adapters.arango_adapter import ArangoAdapter
-
-        ENGINE_FACTORIES["arangodb"] = ArangoAdapter
     return ENGINE_FACTORIES
 
 
@@ -93,7 +82,7 @@ def main():
     )
     parser.add_argument(
         "--engines", nargs="+", default=config.DEFAULT_ENGINES,
-        choices=["mongo", "couchbase", "cassandra", "arangodb"],
+        choices=["mongo"],
     )
     parser.add_argument("--approaches", nargs="+", default=config.DEFAULT_APPROACHES, choices=["A", "B", "C", "D"])
     parser.add_argument("--schema", default="both", choices=["single", "multi", "both"])

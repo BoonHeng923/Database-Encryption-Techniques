@@ -1,6 +1,6 @@
 """Turns a raw dataframe into the exact rows each approach stores, independent of the
 storage engine. Every adapter calls `prepare_records()` so the transform (and therefore
-the leakage it produces or hides) is identical across MongoDB, Couchbase, and Cassandra.
+the leakage it produces or hides) is a property of the pipeline, not of the engine.
 """
 from __future__ import annotations
 

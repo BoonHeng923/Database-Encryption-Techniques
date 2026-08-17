@@ -51,7 +51,7 @@ APPROACH_LABEL = {
     "D": "D — Generative decoys (ours)",
 }
 APPROACH_MARKER = {"A": "o", "B": "s", "C": "D", "D": "^"}
-ENGINE_COLOR = {"mongo": "#2a78d6", "couchbase": "#eb6834", "cassandra": "#1baf7a"}
+ENGINE_COLOR = {"mongo": "#2a78d6"}
 INK = "#0b0b0b"
 MUTED = "#898781"
 GRID = "#e1e0d9"
@@ -78,10 +78,10 @@ def load_results() -> pd.DataFrame:
             f"{metrics.RESULTS_CSV} not found — run `python -m src.experiments.run_experiment` first."
         )
     df = pd.read_csv(metrics.RESULTS_CSV)
-    # raw_results.csv keeps every engine ever run (Couchbase/Cassandra/ArangoDB rows are
-    # intentionally left in place, not deleted) but the report is scoped to
+    # raw_results.csv is append-only and keeps every engine ever run (historical non-mongo
+    # rows are intentionally left in place, not deleted) but the report is scoped to
     # config.DEFAULT_ENGINES -- currently ["mongo"] -- so tables/figures only reflect the
-    # engine(s) actively being reported on. Change DEFAULT_ENGINES to bring others back.
+    # engine(s) actively being reported on.
     return df[df["engine"].isin(config.DEFAULT_ENGINES)]
 
 

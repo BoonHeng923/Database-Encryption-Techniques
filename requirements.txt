@@ -1,8 +1,4 @@
 pymongo==4.10.1
-couchbase==4.3.3
-cassandra-driver==3.29.2
-python-arango==8.1.6
-gevent==26.8.0
 cryptography==43.0.3
 numpy==2.2.6
 pandas==2.2.3

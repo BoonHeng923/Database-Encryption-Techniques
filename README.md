@@ -137,14 +137,10 @@ going into the report.
 # 1. Sanity check (once)
 ./.venv/Scripts/python.exe -m src.analysis.dataset_profile
 
-# 2. Smoke test on Mongo first (fast, isolates adapter issues before trusting the others)
-./.venv/Scripts/python.exe -m src.experiments.run_experiment --engines mongo --approaches A B C D --schema both --scales 1000 --repeats 1 --n-queries 200
+# 2. Smoke test first (fast, isolates pipeline issues before committing to a long run)
+./.venv/Scripts/python.exe -m src.experiments.run_experiment --approaches A B C D --schema both --scales 1000 --repeats 1 --n-queries 200
 
-# 3. Repeat narrowly per engine to isolate issues
-./.venv/Scripts/python.exe -m src.experiments.run_experiment --engines couchbase --scales 1000 --repeats 1 --n-queries 200
-./.venv/Scripts/python.exe -m src.experiments.run_experiment --engines cassandra --scales 1000 --repeats 1 --n-queries 200
-
-# 4. Full run — defaults to 1k / 10k / full dataset, all approaches (A/B/C/D), both schemas, all 3 engines
+# 3. Full run — defaults to 1k / 10k / 30k, all approaches (A/B/C/D), both schemas
 ./.venv/Scripts/python.exe -m src.experiments.run_experiment
 ```
 
@@ -160,11 +156,11 @@ a fresh run.
 Produces, per plan B.8:
 
 - `results/tables/table1_performance.md` — **Table 1**: latency/throughput/CPU/storage
-  per approach x engine (single-collection schema, largest scale point).
+  per approach (single-collection schema, largest scale point).
 - `results/tables/table2_recovery.md` — **Table 2**: value-recovery accuracy per
-  approach x engine.
+  approach.
 - `results/tables/table3_linkage.md` — **Table 3**: cross-collection linkage-recovery
-  accuracy, before (B) vs. after (D), per engine.
+  accuracy, before (B) vs. after (D).
 - `results/figures/fig1_latency_vs_scale.png` — **Fig. 1**: latency vs. dataset size.
 - `results/figures/fig2_recovery_accuracy.png` — **Fig. 2**: the headline security
   result — B->C->D reduction, C/D shown post-realism-filter.
@@ -181,13 +177,8 @@ Produces, per plan B.8:
 ## Notes for the report (plan B.13/B.14)
 
 - **CPU%** is host-wide (`psutil`), not per-container — a documented limitation.
-- **Couchbase storage** is reported at the bucket level (the management stats API has no
-  per-scope/collection granularity), so it aggregates every approach/collection sharing
-  the `encbench` bucket rather than isolating one.
-- **Cassandra storage** is an estimate (`nodetool tablestats` isn't reachable from the
-  app process) — row count x sampled average row size, not an exact on-disk figure.
-- **Cross-engine performance numbers are not directly comparable** — report them as
-  relative overhead against each engine's own Approach-A baseline.
+- **Performance numbers are relative, not absolute** — report them as overhead against
+  the Approach-A baseline rather than as machine-independent figures.
 - **The value-recovery attack's auxiliary knowledge** is each collection's own empirical
   value distribution, standard for this line of attacks.
 - **D's decoy targeting is expected, not exact** — `d` in the B.4.1 formula sets an
