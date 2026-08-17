@@ -64,7 +64,16 @@ def load_or_generate_workload(
     path = workload_path(scale, label)
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            cached = json.load(f)
+        # Only reuse a cache that matches the requested workload size. The filename keys
+        # on (scale, label) but not on n_queries, so a short smoke run (e.g. the README's
+        # --n-queries 200 step) otherwise leaves a truncated workload behind that every
+        # later full run silently inherits -- making the attacker's observed query stream,
+        # and therefore recovery_accuracy, depend on run order rather than on the
+        # requested configuration. Regenerating on mismatch is safe and reproducible:
+        # generate_workload is seeded from (WORKLOAD_SEED, scale) alone.
+            if len(cached) == n_queries:
+                return cached
     queries = generate_workload(df, scale, sensitive_field, n_queries)
     save_workload(queries, scale, label)
     return queries
