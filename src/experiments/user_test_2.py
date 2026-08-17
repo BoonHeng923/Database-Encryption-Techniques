@@ -76,13 +76,38 @@ def main():
 
     print(f"Client local state lookup for '{plain_value}': n_real={n_real}, n_decoy={n_decoy}")
 
-    # 3. Filter the records using the secret algorithm!
-    print("\n--- Filtering Results ---")
-    real_id_set = secret_id.real_ids(returned_ids, n_real=n_real, n_decoy=n_decoy, collection="lab_orders")
-
+    # 3. Attacker Attempt (Without the Real Key)
+    print("\n--- Attacker Attempt (Guessing the Key) ---")
+    # Save the original key to restore later
+    original_decoy_key = config.DECOY_MASTER_KEY
+    
+    # Attacker guesses a random 32-byte key
+    config.DECOY_MASTER_KEY = os.urandom(32)
+    fake_real_id_set = secret_id.real_ids(returned_ids, n_real=n_real, n_decoy=n_decoy, collection="lab_orders")
+    
+    attacker_found_real = 0
     for record_id_hex in extracted_hex_ids:
-        is_real = bytes.fromhex(record_id_hex) in real_id_set
+        is_real = bytes.fromhex(record_id_hex) in fake_real_id_set
         print(f"ID {record_id_hex[:8]}... -> {'REAL' if is_real else 'DECOY'}")
+        if is_real: 
+            attacker_found_real += 1
+            
+    print(f"Attacker Conclusion: Identified {attacker_found_real} real records.")
+    print("(Because the attacker doesn't hold the true key, the formula outputs random noise that matches nothing!)")
+
+    # 4. Legitimate User Attempt (With the Real Key)
+    print("\n--- Legitimate User Attempt (With the Real Key) ---")
+    # Restore the real key!
+    config.DECOY_MASTER_KEY = original_decoy_key
+    
+    true_real_id_set = secret_id.real_ids(returned_ids, n_real=n_real, n_decoy=n_decoy, collection="lab_orders")
+
+    legit_found_real = 0
+    for record_id_hex in extracted_hex_ids:
+        is_real = bytes.fromhex(record_id_hex) in true_real_id_set
+        print(f"ID {record_id_hex[:8]}... -> {'REAL' if is_real else 'DECOY'}")
+        if is_real: 
+            legit_found_real += 1
 
 if __name__ == "__main__":
     main()
