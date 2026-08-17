@@ -5,12 +5,12 @@ ways — **A** plaintext, **B** deterministic/property-preserving encryption (le
 deterministic encryption + naive (independently-sampled) decoy records, **D** deterministic
 encryption + generatively-produced (co-occurrence-preserving) decoy records, a secret
 HMAC-keyed real/decoy identification function, per-collection encryption keys, and name
-tokenisation — across **three NoSQL engines (MongoDB, Couchbase, Cassandra)**, replays one
-identical query workload against every combination, runs two leakage-abuse attacks
-(single-collection value recovery and cross-collection linkage recovery) against each, and
-reports security and performance side by side, before vs. after the solution.
+tokenisation — in **MongoDB**, replays one identical query workload against every
+combination, runs two leakage-abuse attacks (single-collection value recovery and
+cross-collection linkage recovery) against each, and reports security and performance side
+by side, before vs. after the solution.
 
-No SQL engine is used — this is a NoSQL-only benchmark (Postgres/Phase-1 was retired).
+No SQL engine is used — this is a NoSQL-only benchmark.
 
 ## Project layout
 
@@ -29,16 +29,14 @@ src/core/            shared, engine-independent pipeline
   adapters/
     base.py                collection-aware StorageAdapter interface
     mongo_adapter.py         MongoDB implementation
-    couchbase_adapter.py      Couchbase implementation (N1QL, scope-per-collection)
-    cassandra_adapter.py      Cassandra implementation (CQL, secondary index)
-src/experiments/run_experiment.py   orchestrates the scale x engine x schema x approach x repeat grid
+src/experiments/run_experiment.py   orchestrates the scale x schema x approach x repeat grid
 src/analysis/
   dataset_profile.py    B.5.1 dataset sanity check (run this first)
   generate_report.py    turns results/raw_results.csv into the B.8 tables/figures
 data/raw/              adult_inpatient_patient_portal_data.xlsx (the real dataset)
 data/processed/        dataset_cache.csv (fast-reload cache), per-scale/collection workload files
 results/                raw_results.csv, tables/*.md, figures/*.png
-docker-compose.yml      MongoDB + Couchbase + Cassandra containers (+ optional app container)
+docker-compose.yml      MongoDB container (+ optional app container)
 ```
 
 ## The four approaches
@@ -69,24 +67,17 @@ docker-compose.yml      MongoDB + Couchbase + Cassandra containers (+ optional a
    by matching `patient_code` tokens? B/C share one key -> near-100% linkage; D uses a
    distinct key per collection -> linkage recovery collapses.
 
-## Databases: Dockerized
+## Database: Dockerized
 
 | Service | Container port(s) | Host port(s) | Credentials |
 |---|---|---|---|
 | `encbench_mongo` | 27017 | **27018** | `encbench_user` / `encbench_pass`, db `encbench` |
-| `encbench_couchbase` | 8091-8096, 11210 | same | admin `encbench_user` / `encbench_pass` (bootstrapped by the adapter on first connect) |
-| `encbench_cassandra` | 9042 | same | none (single-node dev cluster) |
 
-Bring them up:
+Bring it up:
 ```
-docker compose up -d mongo couchbase cassandra
-docker compose ps          # all three should show "healthy"
+docker compose up -d mongo
+docker compose ps          # should show "healthy"
 ```
-Couchbase can take 60-90s to become healthy on first boot (cluster bootstrap); Cassandra
-similarly takes a while to start accepting CQL connections — poll `docker compose ps`
-rather than giving up early. Both adapters also self-heal their own keyspace/bucket/
-scope/collection setup lazily on first connect, so a `docker compose down` + `up` cycle
-(even with fresh volumes) doesn't need a separate init script.
 
 To stop: `docker compose down` (add `-v` only if you also want to delete the stored data
 volumes — don't do this if you have results you still need reproduced).
